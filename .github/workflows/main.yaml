@@ -1,16 +1,22 @@
 name: CI
-on: push
+
+on:
+  push:
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Descargar repositorio
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+
       - name: Instalar JDK 11
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: "11"
-          distribution: "adopt"
+
       - name: Construir con Maven
         run: mvn clean package -DskipTests
 
@@ -18,19 +24,23 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: moviecards-java
-          path: "${{ github.workspace }}/target/*.jar"
+          path: target/*.jar
+
   test:
     needs: build
     runs-on: ubuntu-latest
+
     steps:
       - name: Descargar repositorio
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+
       - name: Instalar JDK 11
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: "11"
-          distribution: "adopt"
-      - name: Instalar Chrome y ChromeDriver para pruebas end to end
+
+      - name: Instalar Chrome y ChromeDriver
         run: |
           wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo dpkg -i google-chrome-stable_current_amd64.deb
@@ -40,48 +50,63 @@ jobs:
           unzip chromedriver.zip
           chmod +x chromedriver
           sudo mv chromedriver /usr/local/bin/
-      - name: Ejecutar la aplicación para pruebas end to end
+
+      - name: Ejecutar la aplicación
         run: mvn spring-boot:run & sleep 60
-      - name: Ejecutar las pruebas unitarias, de integración y end to end
+
+      - name: Ejecutar pruebas
         run: mvn clean verify
 
   qa:
     needs: test
     runs-on: self-hosted
     continue-on-error: true
+
     steps:
       - name: Descargar repositorio
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+
       - name: Instalar JDK 11
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: "11"
-          distribution: "adopt"
-      - name: Construir con Maven
-        run: mvn clean package -DskipTests
-      - name: Revisar la calidad con Sonarqube
+
+      - name: Verificar Java y Maven
+        shell: cmd
         run: |
-          mvn sonar:sonar -Dsonar.host.url=http://localhost:9000 -Dsonar.qualitygate.wait=true -Dsonar.login=admin -Dsonar.password=4daniel
+          java -version
+          mvn -version
+          where mvn
+
+      - name: Construir con Maven
+        shell: cmd
+        run: mvn clean package -DskipTests
+
+      - name: Ejecutar análisis SonarQube
+        shell: cmd
+        run: mvn sonar:sonar -Dsonar.host.url=http://localhost:9000 -Dsonar.login=admin -Dsonar.password=4daniel -Dsonar.qualitygate.wait=true
 
   deploy:
-    runs-on: ubuntu-latest
     needs: qa
-    if: github.ref=='refs/heads/master'
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+
     environment:
-      name: 'Production'
+      name: Production
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
 
     steps:
-      - name: Download artifact from build job
+      - name: Descargar artefacto
         uses: actions/download-artifact@v4
         with:
           name: moviecards-java
 
-      - name: Deploy to Azure Web App
+      - name: Desplegar en Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'moviecards-saigua'
-          slot-name: 'Production'
-          package: '*.jar'
+          app-name: moviecards-saigua
+          slot-name: Production
+          package: "*.jar"
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_9ECDE03922444DD38A42DF8F6B3EE2B3 }}
